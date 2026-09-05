@@ -26,7 +26,7 @@ The page needs a secure context for geolocation, so serve it over **HTTPS or loc
 npx serve .            # or: python3 -m http.server
 ```
 
-or host the three files (`index.html`, `styles.css`, `app.js`) on GitHub Pages / Netlify / any static host.
+or host the folder (`index.html`, `styles.css`, `app.js`, `favicon.svg`, `apple-touch-icon.png`) on GitHub Pages / Netlify / any static host.
 
 ## How the mapping works
 
