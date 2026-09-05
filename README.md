@@ -3,13 +3,17 @@
 A static, backend-free page that turns any pasted map image into a live navigation map.
 
 1. **Add a map image** – paste (Ctrl+V), drag & drop, or choose a file.
-2. **Mark known points** – tap two (or more) spots whose real-world coordinates you know and type them in
-   (decimal `lat, lon`, or paste a Google Maps link). Drag a marker to fine-tune it, tap it to edit.
+2. **Mark known points** – tap two (or more) spots on your image. For each one, find the same spot on the
+   OpenStreetMap picker inside the dialog and tap it (drag the pin to refine), or type `lat, lon` / paste a
+   Google Maps link, or use your current GPS position. From the third point on, the picker opens on an
+   estimate derived from the points you already have. Drag an image marker to fine-tune it, tap it to edit.
    Extra points improve the fit; the list shows each point's residual error.
 3. **Navigate** – your GPS position, accuracy circle and heading are drawn on the image. Pan and pinch-zoom
    freely; the ⦿ button re-centres on you.
 
 Everything is stored in the browser only: the image in IndexedDB, the points and current step in localStorage.
+The only external resources are Leaflet (from cdnjs) and OpenStreetMap tiles for the picker; navigation itself
+works offline once the page is loaded.
 
 ## Running
 

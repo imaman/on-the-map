@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#111418">
 <title>On the Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" crossorigin="">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -60,10 +61,15 @@
 <dialog id="coord-dialog">
   <form method="dialog">
     <h2>Point <span id="dlg-num"></span></h2>
-    <p class="muted small">Enter the real-world coordinates of the spot you marked. Decimal degrees, latitude first. A Google Maps link works too.</p>
+    <p class="muted small">Find the same spot on the map below and tap it, or type its coordinates (decimal <code>lat, lon</code>, or a Google Maps link).</p>
+    <div id="pick-map"></div>
+    <p id="pick-note" class="muted small"></p>
     <input id="coord-input" placeholder="32.0853, 34.7818" autocomplete="off" spellcheck="false">
     <p id="coord-preview" class="small"></p>
-    <button type="button" id="use-gps-btn" class="btn wide">Use my current location</button>
+    <div class="row split">
+      <button type="button" id="use-gps-btn" class="btn">Use my location</button>
+      <button type="button" id="gmaps-btn" class="btn">Open in Google Maps</button>
+    </div>
     <menu>
       <button value="cancel" class="btn">Cancel</button>
       <button value="delete" id="dlg-delete" class="btn danger">Delete</button>
@@ -84,6 +90,7 @@
   </form>
 </dialog>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body>
 </html>

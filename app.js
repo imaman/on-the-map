@@ -134,6 +134,14 @@ function worldToPixel(t, lat, lon) {
   const r = cmul(t.a, toMerc(lat, lon));
   return { x: r.re + t.b.re, y: r.im + t.b.im };
 }
+/** Inverse of worldToPixel: image pixel -> lat/lon. */
+function pixelToWorld(t, x, y) {
+  const d = { re: x - t.b.re, im: y - t.b.im };
+  const den = t.a.re * t.a.re + t.a.im * t.a.im;
+  const m = { re: (d.re * t.a.re + d.im * t.a.im) / den, im: (d.im * t.a.re - d.re * t.a.im) / den };
+  const lat = ((2 * Math.atan(Math.exp((-m.im * Math.PI) / 180)) - Math.PI / 2) * 180) / Math.PI;
+  return { lat, lon: m.re };
+}
 function pixelsPerMeter(t, lat) {
   return cabs(t.a) / (METERS_PER_DEG * Math.cos((lat * Math.PI) / 180));
 }
@@ -451,7 +459,7 @@ function openCoordDialog(p) {
   coordInput.value = p.lat == null ? '' : fmtCoord(p.lat, p.lon);
   updateCoordPreview();
   coordDialog.showModal();
-  setTimeout(() => coordInput.focus(), 50);
+  openPickMap(p);
 }
 function updateCoordPreview() {
   const c = parseCoords(coordInput.value);
@@ -459,7 +467,11 @@ function updateCoordPreview() {
   coordPreview.textContent = c ? `lat ${c.lat.toFixed(6)}, lon ${c.lon.toFixed(6)}` : coordInput.value.trim() ? 'Could not read coordinates' : '';
   $('#dlg-ok').disabled = !c;
 }
-coordInput.addEventListener('input', updateCoordPreview);
+coordInput.addEventListener('input', () => {
+  updateCoordPreview();
+  const c = parseCoords(coordInput.value);
+  if (c) setPickPin(c.lat, c.lon, { fromInput: true });
+});
 coordDialog.addEventListener('close', () => {
   const p = dialogPoint;
   dialogPoint = null;
@@ -484,6 +496,7 @@ $('#use-gps-btn').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition((pos) => {
     coordInput.value = fmtCoord(pos.coords.latitude, pos.coords.longitude);
     updateCoordPreview();
+    setPickPin(pos.coords.latitude, pos.coords.longitude, { fromInput: true, zoom: 17 });
     coordPreview.textContent += ` (accuracy ±${Math.round(pos.coords.accuracy)} m)`;
     btn.disabled = false; btn.textContent = 'Use my current location';
   }, (err) => {
@@ -491,6 +504,105 @@ $('#use-gps-btn').addEventListener('click', () => {
     coordPreview.textContent = geoErrorText(err);
     btn.disabled = false; btn.textContent = 'Use my current location';
   }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+});
+
+// ---------- in-dialog map picker (Leaflet + OpenStreetMap) ----------
+const PICK_VIEW_KEY = 'on-the-map/pick-view/v1';
+const pickMapEl = $('#pick-map');
+const pickNote = $('#pick-note');
+let pickMap = null;
+let pickPin = null;
+let pickSession = 0; // invalidates async centring once the dialog is reopened/closed
+
+function ensurePickMap() {
+  if (pickMap) return pickMap;
+  if (typeof L === 'undefined') return null; // Leaflet failed to load (offline?)
+  pickMap = L.map(pickMapEl, { worldCopyJump: true, zoomSnap: 0.5 });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+  }).addTo(pickMap);
+  pickMap.on('click', (e) => setPickPin(e.latlng.lat, e.latlng.lng, { fromMap: true }));
+  pickMap.on('moveend', () => {
+    const c = pickMap.getCenter();
+    try { localStorage.setItem(PICK_VIEW_KEY, JSON.stringify({ lat: c.lat, lon: c.lng, zoom: pickMap.getZoom() })); } catch { /* ignore */ }
+  });
+  return pickMap;
+}
+
+/** Best guess of where to open the picker for point p. */
+function pickStartView(p) {
+  if (p.lat != null) return { lat: p.lat, lon: p.lon, zoom: 17 };
+  if (transform) return { ...pixelToWorld(transform, p.px, p.py), zoom: 17, estimate: true };
+  const known = state.points.filter((q) => q.lat != null && q !== p);
+  if (known.length) return { lat: known[0].lat, lon: known[0].lon, zoom: 15 };
+  if (lastPosition) return { lat: lastPosition.coords.latitude, lon: lastPosition.coords.longitude, zoom: 16 };
+  try { const v = JSON.parse(localStorage.getItem(PICK_VIEW_KEY) || 'null'); if (v && Number.isFinite(v.lat)) return v; } catch { /* ignore */ }
+  return null;
+}
+
+function openPickMap(p) {
+  const map = ensurePickMap();
+  const session = ++pickSession;
+  if (!map) { pickNote.textContent = 'Map picker unavailable (could not load Leaflet / OpenStreetMap). Type the coordinates instead.'; return; }
+  if (pickPin) { pickPin.remove(); pickPin = null; }
+  pickNote.textContent = '';
+  const start = pickStartView(p);
+  requestAnimationFrame(() => {
+    if (session !== pickSession) return;
+    map.invalidateSize();
+    if (!start) {
+      map.setView([20, 0], 2);
+      pickNote.textContent = 'Zoom in to the area of your map, then tap the spot.';
+      // One-off attempt to jump to the device's (possibly cached) location.
+      navigator.geolocation?.getCurrentPosition((pos) => {
+        if (session !== pickSession || pickPin) return;
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      }, () => {}, { maximumAge: 600000, timeout: 8000 });
+      return;
+    }
+    map.setView([start.lat, start.lon], start.zoom);
+    if (p.lat != null) setPickPin(p.lat, p.lon, { fromInput: true });
+    else if (start.estimate) {
+      setPickPin(start.lat, start.lon, { estimate: true });
+      pickNote.textContent = 'The dashed pin is an estimate from your other points. Tap or drag to set the true position.';
+    }
+  });
+}
+
+function setPickPin(lat, lon, opts = {}) {
+  if (!pickMap) return;
+  if (!pickPin) {
+    pickPin = L.marker([lat, lon], {
+      draggable: true,
+      icon: L.divIcon({ className: 'pick-pin', iconSize: [22, 22], iconAnchor: [11, 11] }),
+    }).addTo(pickMap);
+    pickPin.on('drag dragend', () => {
+      const ll = pickPin.getLatLng();
+      pickPin.getElement()?.classList.remove('estimate');
+      coordInput.value = fmtCoord(ll.lat, ll.lng);
+      updateCoordPreview();
+    });
+  } else pickPin.setLatLng([lat, lon]);
+  pickPin.getElement()?.classList.toggle('estimate', !!opts.estimate);
+  if (opts.fromMap) {
+    coordInput.value = fmtCoord(lat, lon);
+    updateCoordPreview();
+    pickNote.textContent = '';
+  } else if (opts.fromInput) {
+    pickNote.textContent = '';
+    if (opts.zoom || pickMap.getZoom() < 12) pickMap.setView([lat, lon], Math.max(pickMap.getZoom(), opts.zoom || 16));
+    else if (!pickMap.getBounds().contains([lat, lon])) pickMap.panTo([lat, lon]);
+  }
+}
+
+coordDialog.addEventListener('close', () => { pickSession++; });
+
+$('#gmaps-btn').addEventListener('click', () => {
+  const c = parseCoords(coordInput.value) || (pickMap && pickPin ? { lat: pickPin.getLatLng().lat, lon: pickPin.getLatLng().lng } : null)
+    || (pickMap ? { lat: pickMap.getCenter().lat, lon: pickMap.getCenter().lng } : null);
+  const url = c ? `https://www.google.com/maps/search/?api=1&query=${c.lat.toFixed(6)},${c.lon.toFixed(6)}` : 'https://www.google.com/maps';
+  window.open(url, '_blank', 'noopener');
 });
 
 // ---------- navigation ----------
@@ -589,6 +701,7 @@ async function acceptNewImage(blob) {
 function setUploadMsg(text) { $('#upload-msg').textContent = text; }
 
 document.addEventListener('paste', (e) => {
+  if (coordDialog.open || menuDialog.open) return;
   const items = [...(e.clipboardData?.items || [])];
   const item = items.find((it) => it.type.startsWith('image/'));
   if (!item) return;
