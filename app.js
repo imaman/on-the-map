@@ -76,6 +76,7 @@ const state = {
 };
 
 function saveState() {
+  if (state.phase === 'upload') { localStorage.removeItem(LS_KEY); return; }
   const points = state.points.filter((p) => p.lat != null);
   localStorage.setItem(LS_KEY, JSON.stringify({ phase: state.phase, points }));
 }

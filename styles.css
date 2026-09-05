@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -213,7 +214,7 @@ body {
   border: 2px dashed var(--border);
   border-radius: 16px;
 }
-.drop-icon { font-size: 48px; }
+.drop-icon { color: var(--accent); }
 h1 { font-size: 20px; margin: 8px 0; }
 h2 { font-size: 17px; margin: 0 0 8px; }
 kbd {
