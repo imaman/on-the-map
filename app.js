@@ -991,9 +991,15 @@ function showImage(blob) {
     img.src = imgObjectUrl;
   });
 }
-async function acceptNewImage(blob) {
-  if (!blob || !blob.type.startsWith('image/')) { setUploadMsg('That is not an image.'); return; }
+async function acceptNewImage(file) {
+  if (!file || !file.type.startsWith('image/')) { setUploadMsg('That is not an image.'); return; }
   setUploadMsg('Loading image…');
+  // A File from Android's picker is a temporary reference that can become unreadable within moments
+  // ("NotReadableError"). Copy its bytes into memory immediately, before doing anything else with it.
+  let blob = file;
+  let copied = false;
+  try { blob = new Blob([await file.arrayBuffer()], { type: file.type }); copied = true; }
+  catch (e) { console.warn('Could not read the picked file up front; will re-encode from the decoded image', e); }
   try {
     await showImage(blob);
   } catch (e) { setUploadMsg(e.message); return; }
@@ -1001,14 +1007,26 @@ async function acceptNewImage(blob) {
   state.points = [];
   recomputeTransform();
   setPhase('calibrate');                       // never make the user wait on storage
-  persistImage(blob);
+  persistImage(copied ? blob : null);
 }
-/** Store the image in the background. A File from the system picker is first copied into a plain in-memory
- *  Blob: Chrome on Android may otherwise store a reference it cannot read back. */
+/** Re-encode the image currently on screen. Works even when the source file is no longer readable,
+ *  because the decoded pixels are already in memory. */
+function reencodeDisplayedImage() {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { reject(new Error('canvas unavailable')); return; }
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('re-encoding failed (image too large?)'))), 'image/jpeg', 0.92);
+  });
+}
+/** Store the image in the background; failure only affects the next visit. */
 async function persistImage(blob) {
   try {
-    const bytes = await blob.arrayBuffer();
-    await idbPut(IMG_KEY, new Blob([bytes], { type: blob.type }));
+    const toStore = blob || await reencodeDisplayedImage();
+    await idbPut(IMG_KEY, toStore);
   } catch (e) {
     console.warn('Could not save image', e);
     const why = e?.message ? ` (${e.message})` : '';
