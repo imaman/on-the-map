@@ -39,10 +39,11 @@ const coordPreview = $('#coord-preview');
 const menuDialog = $('#menu-dialog');
 
 // ---------- persistence ----------
-const IDB_TIMEOUT_MS = 8000;
-function withTimeout(promise, what) {
+const IDB_TIMEOUT_MS = 8000;        // opens and reads
+const IDB_WRITE_TIMEOUT_MS = 45000; // a multi-megabyte photo can take a while on slow flash storage
+function withTimeout(promise, what, ms = IDB_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${what} timed out`)), IDB_TIMEOUT_MS);
+    const t = setTimeout(() => reject(new Error(`${what} timed out`)), ms);
     promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
   });
 }
@@ -65,7 +66,7 @@ async function idbPut(key, value) {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
       tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
-    }), 'Saving the image');
+    }), 'Saving the image', IDB_WRITE_TIMEOUT_MS);
   } finally { db.close(); }
 }
 async function idbGet(key) {
@@ -976,10 +977,19 @@ async function acceptNewImage(blob) {
   state.points = [];
   recomputeTransform();
   setPhase('calibrate');                       // never make the user wait on storage
-  idbPut(IMG_KEY, blob).catch((e) => {         // persist in the background; failure only affects the next visit
+  persistImage(blob);
+}
+/** Store the image in the background. A File from the system picker is first copied into a plain in-memory
+ *  Blob: Chrome on Android may otherwise store a reference it cannot read back. */
+async function persistImage(blob) {
+  try {
+    const bytes = await blob.arrayBuffer();
+    await idbPut(IMG_KEY, new Blob([bytes], { type: blob.type }));
+  } catch (e) {
     console.warn('Could not save image', e);
-    notice('The map is loaded, but could not be saved for next time. It will be gone after a reload.');
-  });
+    const why = e?.message ? ` (${e.message})` : '';
+    notice(`The map is loaded and works, but this browser could not store it${why}. It will disappear when you reload or close the page.`, 9000);
+  }
 }
 function setUploadMsg(text) { $('#upload-msg').textContent = text; }
 
