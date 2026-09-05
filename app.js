@@ -22,7 +22,6 @@ const compass = $('#compass');
 const recenterBtn = $('#recenter-btn');
 const orientBtn = $('#orient-btn');
 const dropZone = $('#drop-zone');
-const stepLabel = $('#step-label');
 const panelCal = $('#panel-calibrate');
 const panelNav = $('#panel-navigate');
 const pointList = $('#point-list');
@@ -432,9 +431,6 @@ function setPhase(phase) {
   orientBtn.hidden = phase !== 'navigate';
   $('#menu-edit').hidden = phase === 'upload';
   if (phase !== 'navigate' && view.rot !== 0) { const r = view.rect(); view.setRotation(0, r.width / 2, r.height / 2); }
-  stepLabel.textContent =
-    phase === 'upload' ? 'Step 1 · add a map image' :
-    phase === 'calibrate' ? 'Step 2 · mark known points' : 'Navigating';
   if (phase === 'navigate') startNavigation(); else stopNavigation();
   if (phase === 'calibrate') updateCalibratePanel();
   scheduleRender();
@@ -781,9 +777,7 @@ function updateNavStatus() {
   const px = worldToPixel(transform, lat, lon);
   const onMap = px.x >= 0 && px.y >= 0 && px.x <= img.naturalWidth && px.y <= img.naturalHeight;
   const parts = [onMap ? 'You are here' : 'You are off this map', `±${Math.round(accuracy)} m`];
-  const h = currentHeading();
-  if (h != null) parts.push(`${Math.round(h)}° ${headingSource()}`);
-  else if (state.orient === 'heading') parts.push('no heading yet');
+  if (state.orient === 'heading' && currentHeading() == null) parts.push('no heading yet');
   if (speed != null && speed > 0.3) parts.push(`${(speed * 3.6).toFixed(1)} km/h`);
   setNavStatus(parts.join(' · '), !onMap);
 }
@@ -878,9 +872,12 @@ async function confirmReplace() {
 
 // ---------- menu & buttons ----------
 $('#menu-btn').addEventListener('click', () => {
-  const pos = $('#menu-pos');
+  const pos = $('#menu-pos'), hd = $('#menu-heading');
   pos.hidden = !(state.phase === 'navigate' && lastPosition);
-  if (!pos.hidden) pos.textContent = `Your position: ${fmtCoord(lastPosition.coords.latitude, lastPosition.coords.longitude)}`;
+  if (!pos.hidden) pos.textContent = `Position: ${fmtCoord(lastPosition.coords.latitude, lastPosition.coords.longitude)}`;
+  const h = currentHeading();
+  hd.hidden = !(state.phase === 'navigate' && h != null);
+  if (!hd.hidden) hd.textContent = `Heading: ${Math.round(h)}° (${headingSource()})`;
   menuDialog.showModal();
 });
 menuDialog.addEventListener('close', async () => {

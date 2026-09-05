@@ -31,30 +31,7 @@ body {
   overflow: hidden;
 }
 
-#topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  padding-top: calc(8px + env(safe-area-inset-top));
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  flex: none;
-}
-.brand { font-weight: 700; }
-.step { color: var(--muted); flex: 1; font-size: 13px; }
-
-.icon-btn {
-  background: none;
-  border: none;
-  color: var(--fg);
-  font-size: 22px;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.icon-btn:hover { background: rgba(255,255,255,.08); }
+.brand { font-weight: 700; color: var(--muted); letter-spacing: .02em; text-transform: uppercase; font-size: 12px; }
 
 #viewport {
   position: relative;
@@ -152,7 +129,7 @@ body {
 
 #compass {
   position: absolute;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top));
   left: 12px;
   width: 40px;
   height: 40px;
@@ -197,6 +174,14 @@ body {
 }
 .fab.active { color: var(--accent); }
 .fab.upper { bottom: 72px; font-size: 18px; font-weight: 700; }
+.fab.corner {
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  bottom: auto;
+  width: 40px; height: 40px;
+  font-size: 20px;
+  background: rgba(27,32,39,.85);
+}
 
 #drop-zone {
   position: absolute;
@@ -268,7 +253,7 @@ kbd {
   box-shadow: 0 0 0 2px rgba(0,0,0,.35);
 }
 .status.err .you-dot { background: var(--muted); }
-#menu-pos { font-family: ui-monospace, monospace; margin: 10px 0 0; }
+#menu-pos, #menu-heading { font-family: ui-monospace, monospace; margin: 8px 0 0; }
 
 #point-list { list-style: none; margin: 0; padding: 0; max-height: 26vh; overflow: auto; }
 #point-list li {

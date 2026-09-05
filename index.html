@@ -12,16 +12,11 @@
 </head>
 <body>
 
-<header id="topbar">
-  <span class="brand">On the Map</span>
-  <span id="step-label" class="step"></span>
-  <button id="menu-btn" class="icon-btn" title="Menu" aria-label="Menu">&#8942;</button>
-</header>
-
 <main id="viewport">
   <img id="map-img" alt="" draggable="false" hidden>
   <div id="overlay"></div>
   <div id="compass" hidden title="North"><span>N</span></div>
+  <button id="menu-btn" class="fab corner" title="Menu" aria-label="Menu">&#8942;</button>
   <button id="orient-btn" class="fab upper" hidden title="North up (tap for heading up)" aria-label="Toggle map orientation">N</button>
   <button id="recenter-btn" class="fab" hidden title="Center on my location" aria-label="Center on my location">&#9673;</button>
 
@@ -30,6 +25,7 @@
       <svg class="drop-icon" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
         <path d="M3 6.5 9 4l6 2.5 6-2.5v13l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v15.5M15 6.5V22"/>
       </svg>
+      <div class="brand">On the Map</div>
       <h1>Paste a map image</h1>
       <p>Press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste, drop an image here, or pick a file.</p>
       <div class="row">
@@ -82,6 +78,7 @@
     <button value="replace" class="btn wide">Replace map image</button>
     <button value="edit" id="menu-edit" class="btn wide">Edit calibration points</button>
     <p id="menu-pos" class="muted small" hidden></p>
+    <p id="menu-heading" class="muted small" hidden></p>
     <button value="fit" class="btn wide">Fit map to screen</button>
     <button value="reset" class="btn wide danger">Reset everything</button>
     <p class="muted small">Everything is stored only in this browser. Location needs HTTPS (or localhost) and your permission.</p>
