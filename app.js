@@ -25,6 +25,9 @@ const recenterBtn = $('#recenter-btn');
 const orientBtn = $('#orient-btn');
 const dropZone = $('#drop-zone');
 const panelCal = $('#panel-calibrate');
+const panelPlace = $('#panel-place');
+const crosshair = $('#crosshair');
+const placeMsg = $('#place-msg');
 const panelNav = $('#panel-navigate');
 const pointList = $('#point-list');
 const calHint = $('#cal-hint');
@@ -269,13 +272,14 @@ const view = {
 // Pointer gestures: one pointer pans (or taps), two pointers pinch-zoom, wheel zooms.
 const pointers = new Map();
 let gesture = null;
+let lastMultiEnd = -Infinity;
 viewport.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 && e.pointerType === 'mouse') return;
   if (e.target.closest('.marker.cal') && state.phase === 'calibrate') return; // marker drag handles itself
   if (e.target.closest('button')) return;
   viewport.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) gesture = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false, multi: false };
+  if (pointers.size === 1) gesture = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false, multi: false, type: e.pointerType };
   else if (gesture) gesture.multi = true;
   viewport.classList.add('grabbing');
 });
@@ -307,9 +311,12 @@ function endPointer(e) {
   pointers.delete(e.pointerId);
   if (pointers.size === 0) {
     viewport.classList.remove('grabbing');
-    if (gesture && !gesture.moved && !gesture.multi && performance.now() - gesture.t < 700 && e.type === 'pointerup') {
+    if (gesture?.multi) lastMultiEnd = performance.now();
+    const cleanTap = gesture && !gesture.moved && !gesture.multi && performance.now() - gesture.t < 700 && e.type === 'pointerup'
+      && performance.now() - lastMultiEnd > 400 && !coordDialog.open && !menuDialog.open;
+    if (cleanTap) {
       const s = view.clientToScreen(e.clientX, e.clientY);
-      onTap(view.screenToImage(s.x, s.y));
+      onTap(view.screenToImage(s.x, s.y), gesture.type);
     }
     gesture = null;
   }
@@ -439,6 +446,7 @@ function setPhase(phase) {
   state.phase = phase;
   saveState();
   dropZone.hidden = phase !== 'upload';
+  if (placing) exitPlacing();
   panelCal.hidden = phase !== 'calibrate';
   panelNav.hidden = phase !== 'navigate';
   viewport.classList.toggle('picking', phase === 'calibrate');
@@ -453,22 +461,72 @@ function setPhase(phase) {
   scheduleRender();
 }
 
-function onTap(imgPt) {
-  if (state.phase !== 'calibrate' || !img.naturalWidth) return;
-  if (imgPt.x < 0 || imgPt.y < 0 || imgPt.x > img.naturalWidth || imgPt.y > img.naturalHeight) return;
+let placing = false;
+
+/** Close the loop visibly: flash the marker on the image and say which point was placed. */
+function confirmPlaced(p) {
+  const idx = state.points.indexOf(p) + 1;
+  notice(`Point ${idx} placed`, 2500);
+  requestAnimationFrame(() => {
+    const el = markerEls.get(p.id);
+    if (!el) return;
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('flash');
+  });
+}
+
+function inImage(pt) {
+  return img.naturalWidth && pt.x >= 0 && pt.y >= 0 && pt.x <= img.naturalWidth && pt.y <= img.naturalHeight;
+}
+
+/** A tap on the map while calibrating. Mouse: place directly (nothing hides the spot). Touch: bring the
+ *  crosshair flow in, centred on the tapped spot, so the exact position can be fine-tuned by panning. */
+function onTap(imgPt, pointerType) {
+  if (state.phase !== 'calibrate' || !inImage(imgPt)) return;
+  if (pointerType === 'mouse' && !placing) { newPointAt(imgPt); return; }
+  view.centerOnImagePoint(imgPt.x, imgPt.y);
+  enterPlacing();
+}
+
+function newPointAt(imgPt) {
   const p = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, px: imgPt.x, py: imgPt.y, lat: null, lon: null };
   state.points.push(p);
   scheduleRender();
   openCoordDialog(p);
 }
 
+function enterPlacing() {
+  placing = true;
+  placeMsg.textContent = '';
+  crosshair.hidden = false;
+  panelCal.hidden = true;
+  panelPlace.hidden = false;
+}
+function exitPlacing() {
+  placing = false;
+  crosshair.hidden = true;
+  panelPlace.hidden = true;
+  panelCal.hidden = state.phase !== 'calibrate';
+}
+function placeAtCrosshair() {
+  const r = view.rect();
+  const pt = view.screenToImage(r.width / 2, r.height / 2);
+  if (!inImage(pt)) { placeMsg.textContent = 'The crosshair is outside the image. Move the map first.'; return; }
+  exitPlacing();
+  newPointAt(pt);
+}
+
 function updateCalibratePanel() {
   const withCoords = state.points.filter((p) => p.lat != null);
   const n = withCoords.length;
-  calHint.textContent =
-    n === 0 ? 'Tap a spot on the map whose real-world coordinates you know (a corner, a junction, a landmark).' :
-    n === 1 ? 'Good. Tap a second, well-separated spot. Drag a marker to fine-tune it; tap it to edit.' :
-    'Ready. Add more points for a better fit, or start navigation.';
+  const step = n < 2 ? `<span class="step">Point ${n + 1} of 2</span> · ` : `<span class="step">${n} points</span> · `;
+  calHint.innerHTML = step + (
+    n === 0 ? 'Mark two spots whose real-world coordinates you know (a junction, a corner, a landmark). Tap <b>Add point</b> to begin.' :
+    n === 1 ? 'Good. Now a second spot, well away from the first.' :
+    'Ready to navigate. More points improve the fit; drag a marker to fine-tune it, tap it to edit.');
+  $('#add-point-btn').classList.toggle('primary', n < 2);
+  $('#start-nav-btn').classList.toggle('primary', n >= 2);
   pointList.innerHTML = '';
   const resid = transform?.residuals || [];
   state.points.forEach((p, i) => {
@@ -521,7 +579,7 @@ coordDialog.addEventListener('close', () => {
   const action = coordDialog.returnValue;
   if (action === 'ok') {
     const c = parseCoords(coordInput.value);
-    if (c) { p.lat = c.lat; p.lon = c.lon; }
+    if (c) { p.lat = c.lat; p.lon = c.lon; confirmPlaced(p); }
   } else if (action === 'delete') {
     state.points = state.points.filter((q) => q.id !== p.id);
   }
@@ -1001,6 +1059,9 @@ menuDialog.addEventListener('close', async () => {
   }
 });
 $('#fit-btn').addEventListener('click', () => view.fit());
+$('#add-point-btn').addEventListener('click', enterPlacing);
+$('#place-btn').addEventListener('click', placeAtCrosshair);
+$('#place-cancel-btn').addEventListener('click', exitPlacing);
 $('#start-nav-btn').addEventListener('click', () => { setFollow(true); setPhase('navigate'); });
 recenterBtn.addEventListener('click', () => setFollow(true));
 orientBtn.addEventListener('click', () => setOrient(state.orient === 'heading' ? 'north' : 'heading'));

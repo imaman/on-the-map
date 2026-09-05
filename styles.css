@@ -350,3 +350,41 @@ dialog code { font-family: ui-monospace, monospace; font-size: 12px; }
   font-size: 13px;
   pointer-events: none;
 }
+#crosshair {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 80px; height: 80px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#crosshair::before, #crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6);
+}
+#crosshair::before { left: 39px; top: 0; width: 2px; height: 80px; }
+#crosshair::after { top: 39px; left: 0; height: 2px; width: 80px; }
+#crosshair .ring {
+  position: absolute;
+  left: 26px; top: 26px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.6);
+  background: radial-gradient(circle, transparent 5px, rgba(59,130,246,.15) 6px);
+}
+#crosshair .ring::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%;
+  background: #fff; outline: 1px solid #000;
+}
+#place-msg { margin: 0; min-height: 1.2em; }
+#place-msg:empty { display: none; }
+#panel .hint .step { color: var(--accent); font-weight: 700; }
+
+.marker.cal.flash .pin { animation: marker-flash 1.6s ease-out; }
+@keyframes marker-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(59,130,246,.9), 0 2px 6px rgba(0,0,0,.6); }
+  100% { box-shadow: 0 0 0 26px rgba(59,130,246,0), 0 2px 6px rgba(0,0,0,.6); }
+}

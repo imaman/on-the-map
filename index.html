@@ -21,6 +21,7 @@
   </div>
   <button id="menu-btn" class="fab corner" title="Menu" aria-label="Menu">&#8942;</button>
   <div id="notice" class="notice" hidden role="status"></div>
+  <div id="crosshair" hidden aria-hidden="true"><div class="ring"></div></div>
   <button id="orient-btn" class="fab upper" hidden title="North up (tap for heading up)" aria-label="Toggle map orientation">N</button>
   <button id="recenter-btn" class="fab" hidden title="Center on my location" aria-label="Center on my location">&#9673;</button>
 
@@ -47,7 +48,17 @@
     <ul id="point-list"></ul>
     <div class="row">
       <button id="fit-btn" class="btn">Fit map</button>
-      <button id="start-nav-btn" class="btn primary">Start navigation</button>
+      <button id="add-point-btn" class="btn primary">Add point</button>
+      <button id="start-nav-btn" class="btn">Start navigation</button>
+    </div>
+  </section>
+
+  <section id="panel-place" hidden>
+    <p class="hint">Move the map so the crosshair sits exactly on a spot whose real-world coordinates you know, then place the point.</p>
+    <p id="place-msg" class="small muted"></p>
+    <div class="row">
+      <button id="place-cancel-btn" class="btn">Cancel</button>
+      <button id="place-btn" class="btn primary">Place point here</button>
     </div>
   </section>
 
