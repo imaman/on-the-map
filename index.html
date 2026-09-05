@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<title>On the Map</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header id="topbar">
+  <span class="brand">On the Map</span>
+  <span id="step-label" class="step"></span>
+  <button id="menu-btn" class="icon-btn" title="Menu" aria-label="Menu">&#8942;</button>
+</header>
+
+<main id="viewport">
+  <img id="map-img" alt="" draggable="false" hidden>
+  <div id="overlay"></div>
+  <div id="compass" hidden title="North"><span>N</span></div>
+  <button id="recenter-btn" class="fab" hidden title="Center on my location" aria-label="Center on my location">&#9673;</button>
+
+  <div id="drop-zone">
+    <div class="drop-inner">
+      <div class="drop-icon">&#128506;</div>
+      <h1>Paste a map image</h1>
+      <p>Press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste, drop an image here, or pick a file.</p>
+      <div class="row">
+        <button id="paste-btn" class="btn">Paste from clipboard</button>
+        <label class="btn primary">Choose file<input id="file-input" type="file" accept="image/*" hidden></label>
+      </div>
+      <p id="upload-msg" class="muted"></p>
+    </div>
+  </div>
+</main>
+
+<footer id="panel">
+  <section id="panel-calibrate" hidden>
+    <p class="hint" id="cal-hint"></p>
+    <ul id="point-list"></ul>
+    <div class="row">
+      <button id="fit-btn" class="btn">Fit map</button>
+      <button id="start-nav-btn" class="btn primary">Start navigation</button>
+    </div>
+  </section>
+
+  <section id="panel-navigate" hidden>
+    <p id="nav-status" class="status">Waiting for location&hellip;</p>
+    <p id="nav-detail" class="muted small"></p>
+    <div class="row">
+      <button id="edit-points-btn" class="btn">Edit points</button>
+      <button id="stop-nav-btn" class="btn">Stop</button>
+    </div>
+  </section>
+</footer>
+
+<dialog id="coord-dialog">
+  <form method="dialog">
+    <h2>Point <span id="dlg-num"></span></h2>
+    <p class="muted small">Enter the real-world coordinates of the spot you marked. Decimal degrees, latitude first. A Google Maps link works too.</p>
+    <input id="coord-input" placeholder="32.0853, 34.7818" autocomplete="off" spellcheck="false">
+    <p id="coord-preview" class="small"></p>
+    <button type="button" id="use-gps-btn" class="btn wide">Use my current location</button>
+    <menu>
+      <button value="cancel" class="btn">Cancel</button>
+      <button value="delete" id="dlg-delete" class="btn danger">Delete</button>
+      <button value="ok" id="dlg-ok" class="btn primary">Save</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="menu-dialog">
+  <form method="dialog">
+    <h2>Menu</h2>
+    <button value="replace" class="btn wide">Replace map image</button>
+    <button value="edit" id="menu-edit" class="btn wide">Edit calibration points</button>
+    <button value="fit" class="btn wide">Fit map to screen</button>
+    <button value="reset" class="btn wide danger">Reset everything</button>
+    <p class="muted small">Everything is stored only in this browser. Location needs HTTPS (or localhost) and your permission.</p>
+    <menu><button value="cancel" class="btn">Close</button></menu>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
