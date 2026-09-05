@@ -312,27 +312,38 @@ dialog menu {
 #pick-note:empty { display: none; }
 .row.split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .row.split .btn { padding-inline: 6px; }
-.pick-pin {
-  width: 22px !important;
-  height: 22px !important;
-  margin: 0 !important;
-  border-radius: 50%;
-  background: rgba(59,130,246,.35);
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.5);
-  cursor: move;
-}
-.pick-pin::after {
-  content: "";
+#pick-crosshair {
   position: absolute;
   left: 50%; top: 50%;
-  width: 4px; height: 4px;
-  margin: -2px 0 0 -2px;
-  border-radius: 50%;
-  background: #fff;
-  outline: 1px solid #000;
+  width: 80px; height: 80px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1000; /* above Leaflet panes */
 }
-.pick-pin.estimate { background: rgba(245,158,11,.35); border-style: dashed; }
+#pick-crosshair::before, #pick-crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.9);
+}
+#pick-crosshair::before { left: 39px; top: 0; width: 2px; height: 80px; }
+#pick-crosshair::after { top: 39px; left: 0; height: 2px; width: 80px; }
+#pick-crosshair .ring {
+  position: absolute;
+  left: 26px; top: 26px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.9);
+  background: radial-gradient(circle, transparent 5px, rgba(59,130,246,.15) 6px);
+}
+#pick-crosshair .ring::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%;
+  background: var(--accent); outline: 1px solid #fff;
+}
+#pick-crosshair.estimate::before, #pick-crosshair.estimate::after { background: #f59e0b; }
+#pick-crosshair.estimate .ring { border-color: #f59e0b; border-style: dashed; }
 .leaflet-container { font: inherit; }
 dialog code { font-family: ui-monospace, monospace; font-size: 12px; }
 

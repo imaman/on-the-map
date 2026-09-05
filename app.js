@@ -559,6 +559,7 @@ function openCoordDialog(p) {
   $('#dlg-num').textContent = state.points.indexOf(p) + 1;
   coordInput.value = p.lat == null ? '' : fmtCoord(p.lat, p.lon);
   updateCoordPreview();
+  ensurePickMap();          // before showModal: the dialog must not autofocus the text field (mobile keyboard)
   coordDialog.showModal();
   openPickMap(p);
 }
@@ -571,7 +572,7 @@ function updateCoordPreview() {
 coordInput.addEventListener('input', () => {
   updateCoordPreview();
   const c = parseCoords(coordInput.value);
-  if (c) setPickPin(c.lat, c.lon, { fromInput: true });
+  if (c) moveCrosshairTo(c.lat, c.lon);
 });
 coordDialog.addEventListener('close', () => {
   const p = dialogPoint;
@@ -597,7 +598,7 @@ $('#use-gps-btn').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition((pos) => {
     coordInput.value = fmtCoord(pos.coords.latitude, pos.coords.longitude);
     updateCoordPreview();
-    setPickPin(pos.coords.latitude, pos.coords.longitude, { fromInput: true, zoom: 17 });
+    moveCrosshairTo(pos.coords.latitude, pos.coords.longitude, 17);
     coordPreview.textContent += ` (accuracy ±${Math.round(pos.coords.accuracy)} m)`;
     btn.disabled = false; btn.textContent = 'Use my current location';
   }, (err) => {
@@ -608,27 +609,62 @@ $('#use-gps-btn').addEventListener('click', () => {
 });
 
 // ---------- in-dialog map picker (Leaflet + OpenStreetMap) ----------
+// Same interaction as on the image: a fixed crosshair at the centre; pan/zoom the map under it.
 const PICK_VIEW_KEY = 'on-the-map/pick-view/v1';
 const pickMapEl = $('#pick-map');
 const pickNote = $('#pick-note');
+const pickCross = $('#pick-crosshair');
 let pickMap = null;
-let pickPin = null;
-let pickSession = 0; // invalidates async centring once the dialog is reopened/closed
+let pickSession = 0;        // invalidates async centring once the dialog is reopened/closed
+let pickEstimate = false;   // crosshair currently shows an estimate that the user has not confirmed
+let pickProgrammatic = false; // true while we move the map ourselves (Leaflet fires the same events either way)
+let pickTouched = false;    // the user has positioned the map since the dialog opened
+let userTyping = false;     // the user is editing the text field; do not overwrite it from the map
+
+function pickSetView(lat, lon, zoom) {
+  pickProgrammatic = true;
+  try { pickMap.setView([lat, lon], zoom, { animate: false }); } finally { pickProgrammatic = false; }
+}
+function userTouchedPicker() {
+  pickTouched = true;
+  userTyping = false;
+  if (document.activeElement === coordInput) coordInput.blur();
+  setPickEstimate(false);
+}
 
 function ensurePickMap() {
   if (pickMap) return pickMap;
   if (typeof L === 'undefined') return null; // Leaflet failed to load (offline?)
-  pickMap = L.map(pickMapEl, { worldCopyJump: true, zoomSnap: 0.5 });
+  pickMap = L.map(pickMapEl, { worldCopyJump: true, zoomSnap: 0.5, doubleClickZoom: false });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
   }).addTo(pickMap);
-  pickMap.on('click', (e) => setPickPin(e.latlng.lat, e.latlng.lng, { fromMap: true }));
+  pickMapEl.appendChild(pickCross); // keep the crosshair inside the map box, above the tiles
+  pickCross.hidden = false;
+  pickMap.on('click', (e) => { userTouchedPicker(); pickMap.panTo(e.latlng); }); // slide the tapped spot under the crosshair
+  pickMap.on('dragstart zoomstart', () => { if (!pickProgrammatic) userTouchedPicker(); }); // user movement confirms a real choice
+  pickMap.on('move', syncInputFromCrosshair);
   pickMap.on('moveend', () => {
+    syncInputFromCrosshair();
     const c = pickMap.getCenter();
     try { localStorage.setItem(PICK_VIEW_KEY, JSON.stringify({ lat: c.lat, lon: c.lng, zoom: pickMap.getZoom() })); } catch { /* ignore */ }
   });
   return pickMap;
+}
+
+function setPickEstimate(on) {
+  pickEstimate = on;
+  pickCross.classList.toggle('estimate', on);
+  if (!on) pickNote.textContent = '';
+}
+
+/** The text field mirrors the crosshair, except while the user is typing in it. */
+function syncInputFromCrosshair() {
+  if (!pickMap || userTyping) return;
+  const c = pickMap.getCenter();
+  coordInput.value = fmtCoord(c.lat, c.lng);
+  updateCoordPreview();
 }
 
 /** Best guess of where to open the picker for point p. */
@@ -645,63 +681,51 @@ function pickStartView(p) {
 function openPickMap(p) {
   const map = ensurePickMap();
   const session = ++pickSession;
+  pickTouched = false;
+  userTyping = false;
+  setPickEstimate(false);
   if (!map) { pickNote.textContent = 'Map picker unavailable (could not load Leaflet / OpenStreetMap). Type the coordinates instead.'; return; }
-  if (pickPin) { pickPin.remove(); pickPin = null; }
-  pickNote.textContent = '';
   const start = pickStartView(p);
   requestAnimationFrame(() => {
     if (session !== pickSession) return;
     map.invalidateSize();
     if (!start) {
-      map.setView([20, 0], 2);
-      pickNote.textContent = 'Zoom in to the area of your map, then tap the spot.';
-      // One-off attempt to jump to the device's (possibly cached) location.
+      pickSetView(20, 0, 2);
+      coordInput.value = ''; updateCoordPreview();
+      pickNote.textContent = 'Zoom in to the area of your map and put the crosshair on the spot.';
+      // One-off attempt to jump to the device's (possibly cached) location — unless the user has already
+      // started positioning the map themselves.
       navigator.geolocation?.getCurrentPosition((pos) => {
-        if (session !== pickSession || pickPin) return;
-        map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+        if (session !== pickSession || pickTouched) return;
+        pickSetView(pos.coords.latitude, pos.coords.longitude, 15);
+        coordInput.value = ''; updateCoordPreview(); // still only an area hint
       }, () => {}, { maximumAge: 600000, timeout: 8000 });
       return;
     }
-    map.setView([start.lat, start.lon], start.zoom);
-    if (p.lat != null) setPickPin(p.lat, p.lon, { fromInput: true });
-    else if (start.estimate) {
-      setPickPin(start.lat, start.lon, { estimate: true });
-      pickNote.textContent = 'The dashed pin is an estimate from your other points. Tap or drag to set the true position.';
-    }
+    pickSetView(start.lat, start.lon, start.zoom);
+    if (p.lat == null && start.estimate) {
+      setPickEstimate(true);
+      pickNote.textContent = 'Orange crosshair = estimate from your other points. Pan or zoom to put it on the true spot.';
+    } else if (p.lat == null && !start.estimate) {
+      coordInput.value = ''; updateCoordPreview(); // an area hint only, not a position
+      pickNote.textContent = 'Put the crosshair on the spot you marked on your map.';
+    } else syncInputFromCrosshair();
   });
 }
 
-function setPickPin(lat, lon, opts = {}) {
+/** Move the map so the crosshair sits on (lat, lon); used by typing, GPS and reopening a point. */
+function moveCrosshairTo(lat, lon, minZoom = 16) {
   if (!pickMap) return;
-  if (!pickPin) {
-    pickPin = L.marker([lat, lon], {
-      draggable: true,
-      icon: L.divIcon({ className: 'pick-pin', iconSize: [22, 22], iconAnchor: [11, 11] }),
-    }).addTo(pickMap);
-    pickPin.on('drag dragend', () => {
-      const ll = pickPin.getLatLng();
-      pickPin.getElement()?.classList.remove('estimate');
-      coordInput.value = fmtCoord(ll.lat, ll.lng);
-      updateCoordPreview();
-    });
-  } else pickPin.setLatLng([lat, lon]);
-  pickPin.getElement()?.classList.toggle('estimate', !!opts.estimate);
-  if (opts.fromMap) {
-    coordInput.value = fmtCoord(lat, lon);
-    updateCoordPreview();
-    pickNote.textContent = '';
-  } else if (opts.fromInput) {
-    pickNote.textContent = '';
-    if (opts.zoom || pickMap.getZoom() < 12) pickMap.setView([lat, lon], Math.max(pickMap.getZoom(), opts.zoom || 16));
-    else if (!pickMap.getBounds().contains([lat, lon])) pickMap.panTo([lat, lon]);
-  }
+  setPickEstimate(false);
+  pickSetView(lat, lon, Math.max(pickMap.getZoom(), minZoom));
 }
 
-coordDialog.addEventListener('close', () => { pickSession++; });
+coordDialog.addEventListener('close', () => { pickSession++; userTyping = false; });
+coordInput.addEventListener('focus', () => { userTyping = true; });
+coordInput.addEventListener('blur', () => { userTyping = false; if (parseCoords(coordInput.value)) syncInputFromCrosshair(); });
 
 $('#gmaps-btn').addEventListener('click', () => {
-  const c = parseCoords(coordInput.value) || (pickMap && pickPin ? { lat: pickPin.getLatLng().lat, lon: pickPin.getLatLng().lng } : null)
-    || (pickMap ? { lat: pickMap.getCenter().lat, lon: pickMap.getCenter().lng } : null);
+  const c = parseCoords(coordInput.value) || (pickMap ? { lat: pickMap.getCenter().lat, lon: pickMap.getCenter().lng } : null);
   const url = c ? `https://www.google.com/maps/search/?api=1&query=${c.lat.toFixed(6)},${c.lon.toFixed(6)}` : 'https://www.google.com/maps';
   window.open(url, '_blank', 'noopener');
 });

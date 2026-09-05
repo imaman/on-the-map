@@ -5,9 +5,9 @@ A static, backend-free page that turns any pasted map image into a live navigati
 1. **Add a map image** – paste (Ctrl+V), drag & drop, or choose a file.
 2. **Mark known points** – tap **Add point**, pan/zoom the image until the crosshair sits exactly on a spot
    whose coordinates you know, and tap **Place point here** (on a phone, tapping the image also brings up the
-   crosshair at that spot; with a mouse a click places directly). Then find the same spot on the OpenStreetMap
-   picker inside the dialog and tap it (drag the pin to refine), or type `lat, lon` / paste a Google Maps link,
-   or use your current GPS position. From the third point on, the picker opens on an estimate derived from the
+   crosshair at that spot; with a mouse a click places directly). Then pan/zoom the OpenStreetMap picker inside
+   the dialog until its crosshair sits on the same spot (tapping a place slides it under the crosshair), or type
+   `lat, lon` / paste a Google Maps link, or use your current GPS position. From the third point on, the picker opens on an estimate derived from the
    points you already have. Drag an image marker to fine-tune it, tap it to edit. Two points are required;
    extra points improve the fit and the list shows each point's residual error.
 3. **Navigate** – your GPS position, accuracy circle and heading are drawn on the image. Pan and pinch-zoom

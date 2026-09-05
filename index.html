@@ -67,11 +67,12 @@
   </section>
 </footer>
 
-<dialog id="coord-dialog">
+<dialog id="coord-dialog" autofocus>
   <form method="dialog">
     <h2>Point <span id="dlg-num"></span></h2>
-    <p class="muted small">Find the same spot on the map below and tap it, or type its coordinates (decimal <code>lat, lon</code>, or a Google Maps link).</p>
+    <p class="muted small">Pan and zoom the map below until the crosshair sits on the same spot (tap a place to jump there), or type its coordinates (decimal <code>lat, lon</code>, or a Google Maps link).</p>
     <div id="pick-map"></div>
+    <div id="pick-crosshair" hidden aria-hidden="true"><div class="ring"></div></div>
     <p id="pick-note" class="muted small"></p>
     <input id="coord-input" placeholder="32.0853, 34.7818" autocomplete="off" spellcheck="false">
     <p id="coord-preview" class="small"></p>
