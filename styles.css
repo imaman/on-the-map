@@ -335,3 +335,18 @@ dialog menu {
 .pick-pin.estimate { background: rgba(245,158,11,.35); border-style: dashed; }
 .leaflet-container { font: inherit; }
 dialog code { font-family: ui-monospace, monospace; font-size: 12px; }
+
+.notice {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  max-width: min(92%, 480px);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(27,32,39,.95);
+  border: 1px solid var(--border);
+  color: #fcd34d;
+  font-size: 13px;
+  pointer-events: none;
+}

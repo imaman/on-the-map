@@ -36,39 +36,55 @@ const coordPreview = $('#coord-preview');
 const menuDialog = $('#menu-dialog');
 
 // ---------- persistence ----------
-function openDb() {
+const IDB_TIMEOUT_MS = 8000;
+function withTimeout(promise, what) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const t = setTimeout(() => reject(new Error(`${what} timed out`)), IDB_TIMEOUT_MS);
+    promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+function openDb() {
+  return withTimeout(new Promise((resolve, reject) => {
+    let req;
+    try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
     req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+    req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+    req.onblocked = () => reject(new Error('IndexedDB is blocked by another tab'));
+  }), 'Opening storage');
 }
 async function idbPut(key, value) {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, 'readwrite');
-    tx.objectStore(DB_STORE).put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await withTimeout(new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
+      tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
+    }), 'Saving the image');
+  } finally { db.close(); }
 }
 async function idbGet(key) {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  try {
+    return await withTimeout(new Promise((resolve, reject) => {
+      const req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('IndexedDB read failed'));
+    }), 'Loading the saved image');
+  } finally { db.close(); }
 }
 async function idbDelete(key) {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, 'readwrite');
-    tx.objectStore(DB_STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await withTimeout(new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB delete failed'));
+    }), 'Deleting the saved image');
+  } finally { db.close(); }
 }
 
 const state = {
@@ -79,9 +95,11 @@ const state = {
 };
 
 function saveState() {
-  if (state.phase === 'upload') { localStorage.removeItem(LS_KEY); return; }
-  const points = state.points.filter((p) => p.lat != null);
-  localStorage.setItem(LS_KEY, JSON.stringify({ phase: state.phase, points, orient: state.orient }));
+  try {
+    if (state.phase === 'upload') { localStorage.removeItem(LS_KEY); return; }
+    const points = state.points.filter((p) => p.lat != null);
+    localStorage.setItem(LS_KEY, JSON.stringify({ phase: state.phase, points, orient: state.orient }));
+  } catch (e) { console.warn('Could not save state', e); }
 }
 function loadState() {
   try {
@@ -308,7 +326,7 @@ viewport.addEventListener('wheel', (e) => {
   if (state.phase === 'navigate') setFollow(false);
 }, { passive: false });
 viewport.addEventListener('dblclick', (e) => {
-  if (!img.naturalWidth || state.phase === 'calibrate') return;
+  if (!img.naturalWidth || state.phase !== 'navigate') return;
   const s = view.clientToScreen(e.clientX, e.clientY);
   view.zoomAt(s.x, s.y, 2);
 });
@@ -892,16 +910,30 @@ function showImage(blob) {
 }
 async function acceptNewImage(blob) {
   if (!blob || !blob.type.startsWith('image/')) { setUploadMsg('That is not an image.'); return; }
+  setUploadMsg('Loading image…');
   try {
     await showImage(blob);
   } catch (e) { setUploadMsg(e.message); return; }
-  try { await idbPut(IMG_KEY, blob); }
-  catch { setUploadMsg('Image shown, but could not be saved for next time (storage blocked?).'); }
+  setUploadMsg('');
   state.points = [];
   recomputeTransform();
-  setPhase('calibrate');
+  setPhase('calibrate');                       // never make the user wait on storage
+  idbPut(IMG_KEY, blob).catch((e) => {         // persist in the background; failure only affects the next visit
+    console.warn('Could not save image', e);
+    notice('The map is loaded, but could not be saved for next time. It will be gone after a reload.');
+  });
 }
 function setUploadMsg(text) { $('#upload-msg').textContent = text; }
+
+// A transient, non-blocking notice at the top of the map.
+let noticeTimer = null;
+function notice(text, ms = 6000) {
+  const el = $('#notice');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
 
 document.addEventListener('paste', (e) => {
   if (coordDialog.open || menuDialog.open) return;
@@ -977,7 +1009,8 @@ orientBtn.addEventListener('click', () => setOrient(state.orient === 'heading' ?
 (async function init() {
   loadState();
   let blob = null;
-  try { blob = await idbGet(IMG_KEY); } catch { /* no storage */ }
+  try { blob = await idbGet(IMG_KEY); } catch (e) { console.warn('Could not load saved image', e); }
+  if (img.src) return; // the user already loaded a map while storage was slow: leave it alone
   if (blob) {
     try { await showImage(blob); } catch { blob = null; }
   }
