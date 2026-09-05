@@ -31,6 +31,10 @@ npx serve .            # or: python3 -m http.server
 
 or host the folder (`index.html`, `styles.css`, `app.js`, `favicon.svg`, `apple-touch-icon.png`) on GitHub Pages / Netlify / any static host.
 
+Before committing a change to `app.js` or `styles.css`, run `npm run bump`. It stamps the references in
+`index.html` with a fresh `?v=` so that browsers (GitHub Pages caches files for 10 minutes) cannot pair a new
+page with a stale script.
+
 ## How the mapping works
 
 Known points are projected to Web Mercator and a least-squares similarity transform

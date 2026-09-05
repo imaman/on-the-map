@@ -1,10 +1,11 @@
 {
   "name": "on-the-map",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Georeference a pasted map image and show your live GPS position on it. Static, no backend.",
+  "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "bump": "node bump.js",
+    "test": "echo \"no unit tests; see README\""
   },
   "keywords": [],
   "author": "",
