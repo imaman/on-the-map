@@ -197,6 +197,7 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,.5);
 }
 .fab.active { color: var(--accent); }
+.fab.upper { bottom: 72px; font-size: 18px; font-weight: 700; }
 
 #drop-zone {
   position: absolute;

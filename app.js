@@ -20,6 +20,7 @@ const img = $('#map-img');
 const overlay = $('#overlay');
 const compass = $('#compass');
 const recenterBtn = $('#recenter-btn');
+const orientBtn = $('#orient-btn');
 const dropZone = $('#drop-zone');
 const stepLabel = $('#step-label');
 const panelCal = $('#panel-calibrate');
@@ -73,12 +74,13 @@ const state = {
   phase: 'upload',      // 'upload' | 'calibrate' | 'navigate'
   points: [],           // { id, px, py, lat, lon }  (px/py in image pixels)
   follow: true,
+  orient: 'north',      // navigation orientation: 'north' (north up) | 'heading' (direction of travel up)
 };
 
 function saveState() {
   if (state.phase === 'upload') { localStorage.removeItem(LS_KEY); return; }
   const points = state.points.filter((p) => p.lat != null);
-  localStorage.setItem(LS_KEY, JSON.stringify({ phase: state.phase, points }));
+  localStorage.setItem(LS_KEY, JSON.stringify({ phase: state.phase, points, orient: state.orient }));
 }
 function loadState() {
   try {
@@ -86,6 +88,7 @@ function loadState() {
     if (saved && Array.isArray(saved.points)) {
       state.points = saved.points;
       state.phase = saved.phase || 'calibrate';
+      if (saved.orient === 'heading') state.orient = 'heading';
     }
   } catch { /* ignore corrupt state */ }
 }
@@ -189,11 +192,19 @@ const fmtCoord = (lat, lon) => `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 
 // ---------- view (pan / zoom) ----------
 const view = {
-  scale: 1, tx: 0, ty: 0, minScale: 0.05, maxScale: 40,
+  scale: 1, tx: 0, ty: 0, rot: 0, minScale: 0.05, maxScale: 40,   // rot: degrees, clockwise, applied after scale
   rect() { return viewport.getBoundingClientRect(); },
   clientToScreen(cx, cy) { const r = this.rect(); return { x: cx - r.left, y: cy - r.top }; },
-  screenToImage(sx, sy) { return { x: (sx - this.tx) / this.scale, y: (sy - this.ty) / this.scale }; },
-  imageToScreen(x, y) { return { x: x * this.scale + this.tx, y: y * this.scale + this.ty }; },
+  screenToImage(sx, sy) {
+    const r = (-this.rot * Math.PI) / 180, c = Math.cos(r), n = Math.sin(r);
+    const dx = sx - this.tx, dy = sy - this.ty;
+    return { x: (dx * c - dy * n) / this.scale, y: (dx * n + dy * c) / this.scale };
+  },
+  imageToScreen(x, y) {
+    const r = (this.rot * Math.PI) / 180, c = Math.cos(r), n = Math.sin(r);
+    const X = x * this.scale, Y = y * this.scale;
+    return { x: X * c - Y * n + this.tx, y: X * n + Y * c + this.ty };
+  },
   panBy(dx, dy) { this.tx += dx; this.ty += dy; scheduleRender(); },
   zoomAt(sx, sy, factor) {
     const ns = Math.min(this.maxScale, Math.max(this.minScale, this.scale * factor));
@@ -203,20 +214,35 @@ const view = {
     this.scale = ns;
     scheduleRender();
   },
+  /** Rotate the view to `deg`, keeping the image point under screen point (sx, sy) fixed. */
+  setRotation(deg, sx, sy) {
+    const p = this.screenToImage(sx, sy);
+    this.rot = ((deg % 360) + 360) % 360;
+    const q = this.imageToScreen(p.x, p.y);
+    this.tx += sx - q.x;
+    this.ty += sy - q.y;
+    scheduleRender();
+  },
   fit() {
     if (!img.naturalWidth) return;
     const r = this.rect();
-    const s = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight) * 0.96;
+    const a = (this.rot * Math.PI) / 180, w = img.naturalWidth, h = img.naturalHeight;
+    const bw = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a)); // rotated bounding box
+    const bh = Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a));
+    const s = Math.min(r.width / bw, r.height / bh) * 0.96;
     this.scale = s;
     this.minScale = s * 0.2;
-    this.tx = (r.width - img.naturalWidth * s) / 2;
-    this.ty = (r.height - img.naturalHeight * s) / 2;
+    this.tx = this.ty = 0;
+    const c = this.imageToScreen(w / 2, h / 2);
+    this.tx = r.width / 2 - c.x;
+    this.ty = r.height / 2 - c.y;
     scheduleRender();
   },
   centerOnImagePoint(x, y) {
     const r = this.rect();
-    this.tx = r.width / 2 - x * this.scale;
-    this.ty = r.height / 2 - y * this.scale;
+    const q = this.imageToScreen(x, y);
+    this.tx += r.width / 2 - q.x;
+    this.ty += r.height / 2 - q.y;
     scheduleRender();
   },
 };
@@ -308,7 +334,7 @@ function ensureMeEl() {
 }
 
 function render() {
-  img.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  img.style.transform = `translate(${view.tx}px, ${view.ty}px) rotate(${view.rot}deg) scale(${view.scale})`;
 
   // calibration markers
   const seen = new Set();
@@ -336,7 +362,8 @@ function render() {
   const showMe = state.phase === 'navigate' && lastPosition && transform;
   if (showMe) {
     const el = ensureMeEl();
-    const { latitude: lat, longitude: lon, accuracy, heading } = lastPosition.coords;
+    const { latitude: lat, longitude: lon, accuracy } = lastPosition.coords;
+    const heading = currentHeading();
     const px = worldToPixel(transform, lat, lon);
     const s = view.imageToScreen(px.x, px.y);
     el.hidden = false;
@@ -347,7 +374,7 @@ function render() {
     const hd = el.querySelector('.heading');
     if (heading != null && !Number.isNaN(heading)) {
       hd.hidden = false;
-      hd.style.transform = `translate(-50%, -100%) rotate(${northRotationDeg(transform) + heading}deg)`;
+      hd.style.transform = `translate(-50%, -100%) rotate(${northRotationDeg(transform) + heading + view.rot}deg)`;
     } else hd.hidden = true;
     el.classList.toggle('stale', Date.now() - lastPosition.timestamp > 30000);
   } else if (meEl) meEl.hidden = true;
@@ -355,7 +382,7 @@ function render() {
   // compass
   if (transform && state.phase !== 'upload') {
     compass.hidden = false;
-    compass.style.transform = `rotate(${northRotationDeg(transform)}deg)`;
+    compass.style.transform = `rotate(${northRotationDeg(transform) + view.rot}deg)`;
   } else compass.hidden = true;
 }
 
@@ -402,7 +429,9 @@ function setPhase(phase) {
   panelNav.hidden = phase !== 'navigate';
   viewport.classList.toggle('picking', phase === 'calibrate');
   recenterBtn.hidden = phase !== 'navigate';
+  orientBtn.hidden = phase !== 'navigate';
   $('#menu-edit').hidden = phase === 'upload';
+  if (phase !== 'navigate' && view.rot !== 0) { const r = view.rect(); view.setRotation(0, r.width / 2, r.height / 2); }
   stepLabel.textContent =
     phase === 'upload' ? 'Step 1 · add a map image' :
     phase === 'calibrate' ? 'Step 2 · mark known points' : 'Navigating';
@@ -620,8 +649,102 @@ function geoErrorText(err) {
   }
 }
 
+// ----- heading: device compass first, GPS course (only while moving) as fallback -----
+let compassHeading = null;
+let compassTs = 0;
+let compassStarted = false;
+
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && !Number.isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading; // iOS
+  else if (e.absolute && e.alpha != null) h = 360 - e.alpha; // alpha is counter-clockwise from north
+  if (h == null) return;
+  const screenAngle = screen.orientation?.angle ?? 0; // compensate for landscape
+  const hadHeading = currentHeading() != null;
+  compassHeading = (((h - screenAngle) % 360) + 360) % 360;
+  compassTs = Date.now();
+  if (state.phase === 'navigate') {
+    if (!hadHeading || compassTs - lastDetailTs > 1000) updateNavDetail(); // promptly on first fix, then throttled
+    scheduleRender(); // heading arrow follows the compass
+  }
+}
+let lastDetailTs = 0;
+let compassGranted = false;
+async function startCompass() {
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  if (!compassStarted) {   // Android and desktop deliver events without any permission prompt
+    compassStarted = true;
+    window.addEventListener('ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', onOrientation);
+  }
+  if (!compassGranted && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+: must be called from a user gesture; harmless (rejects) elsewhere, so retried on every relevant tap.
+    try { compassGranted = (await DeviceOrientationEvent.requestPermission()) === 'granted'; } catch { /* not now */ }
+  }
+}
+function currentHeading() {
+  if (compassHeading != null && Date.now() - compassTs < 5000) return compassHeading;
+  const c = lastPosition?.coords;
+  if (c && c.heading != null && !Number.isNaN(c.heading) && (c.speed ?? 0) > 0.7) return c.heading;
+  return null;
+}
+function headingSource() {
+  if (compassHeading != null && Date.now() - compassTs < 5000) return 'compass';
+  const c = lastPosition?.coords;
+  if (c && c.heading != null && !Number.isNaN(c.heading) && (c.speed ?? 0) > 0.7) return 'gps';
+  return null;
+}
+
+// ----- view rotation controller: eases the map towards the mode's target rotation -----
+function targetRotation() {
+  if (!transform) return null;
+  if (state.orient === 'heading') {
+    const h = currentHeading();
+    return h == null ? null : -(northRotationDeg(transform) + h);   // keep the last rotation while heading is unknown
+  }
+  return -northRotationDeg(transform);
+}
+function rotationPivot() {
+  const r = view.rect();
+  if (state.follow && lastPosition && transform) {
+    const px = worldToPixel(transform, lastPosition.coords.latitude, lastPosition.coords.longitude);
+    return view.imageToScreen(px.x, px.y);
+  }
+  return { x: r.width / 2, y: r.height / 2 };
+}
+function stepRotation(immediate) {
+  const target = targetRotation();
+  if (target == null) return;
+  const diff = ((((target - view.rot) % 360) + 540) % 360) - 180;
+  if (Math.abs(diff) < 0.05) return;
+  const piv = rotationPivot();
+  view.setRotation(view.rot + (immediate ? diff : diff * 0.15), piv.x, piv.y);
+}
+let rotTicking = false;
+function rotationTick() {
+  if (state.phase !== 'navigate') { rotTicking = false; return; }
+  stepRotation(false);
+  requestAnimationFrame(rotationTick);
+}
+function startRotationTicker() {
+  if (rotTicking) return;
+  rotTicking = true;
+  requestAnimationFrame(rotationTick);
+}
+function setOrient(mode) {
+  state.orient = mode;
+  saveState();
+  orientBtn.textContent = mode === 'heading' ? '\u25B2' : 'N';
+  orientBtn.title = mode === 'heading' ? 'Heading up (tap for north up)' : 'North up (tap for heading up)';
+  orientBtn.classList.toggle('active', mode === 'heading');
+  if (mode === 'heading') startCompass();
+  if (state.phase === 'navigate') { stepRotation(true); updateNavDetail(); }
+}
+
 function startNavigation() {
   recomputeTransform();
+  startCompass();
+  startRotationTicker();
+  stepRotation(true);
   if (!navigator.geolocation) { setNavStatus('Geolocation is not supported by this browser.', true); return; }
   if (watchId != null) return;
   setNavStatus('Waiting for location…');
@@ -642,11 +765,20 @@ function onPosition(pos) {
   const px = worldToPixel(transform, lat, lon);
   const onMap = px.x >= 0 && px.y >= 0 && px.x <= img.naturalWidth && px.y <= img.naturalHeight;
   setNavStatus(onMap ? `On map · accuracy ±${Math.round(accuracy)} m` : `Outside the map image · accuracy ±${Math.round(accuracy)} m`, !onMap);
-  const parts = [fmtCoord(lat, lon)];
-  if (speed != null && speed > 0.3) parts.push(`${(speed * 3.6).toFixed(1)} km/h`);
-  navDetail.textContent = parts.join(' · ');
+  updateNavDetail();
   if (state.follow) view.centerOnImagePoint(px.x, px.y);
   scheduleRender();
+}
+function updateNavDetail() {
+  lastDetailTs = Date.now();
+  if (!lastPosition) return;
+  const { latitude: lat, longitude: lon, speed } = lastPosition.coords;
+  const parts = [fmtCoord(lat, lon)];
+  if (speed != null && speed > 0.3) parts.push(`${(speed * 3.6).toFixed(1)} km/h`);
+  const h = currentHeading();
+  if (h != null) parts.push(`${Math.round(h)}° (${headingSource()})`);
+  else if (state.orient === 'heading') parts.push('no heading yet – move, or enable compass');
+  navDetail.textContent = parts.join(' · ');
 }
 function setNavStatus(text, isErr = false) {
   navStatus.textContent = text;
@@ -668,7 +800,7 @@ async function requestWakeLock() {
   } catch { /* not critical */ }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
-setInterval(() => { if (state.phase === 'navigate' && lastPosition) scheduleRender(); }, 10000); // refresh "stale" styling
+setInterval(() => { if (state.phase === 'navigate' && lastPosition) { updateNavDetail(); scheduleRender(); } }, 5000); // refresh stale styling / heading
 
 // ---------- image input ----------
 let imgObjectUrl = null;
@@ -762,6 +894,7 @@ $('#start-nav-btn').addEventListener('click', () => { setFollow(true); setPhase(
 $('#edit-points-btn').addEventListener('click', () => setPhase('calibrate'));
 $('#stop-nav-btn').addEventListener('click', () => setPhase('calibrate'));
 recenterBtn.addEventListener('click', () => setFollow(true));
+orientBtn.addEventListener('click', () => setOrient(state.orient === 'heading' ? 'north' : 'heading'));
 
 // ---------- boot ----------
 (async function init() {
@@ -778,6 +911,7 @@ recenterBtn.addEventListener('click', () => setFollow(true));
     return;
   }
   recomputeTransform();
+  setOrient(state.orient);
   const phase = state.phase === 'navigate' && transform ? 'navigate' : 'calibrate';
   if (phase === 'navigate') setFollow(true);
   setPhase(phase);
