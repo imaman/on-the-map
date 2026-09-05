@@ -15,7 +15,10 @@
 <main id="viewport">
   <img id="map-img" alt="" draggable="false" hidden>
   <div id="overlay"></div>
-  <div id="compass" hidden title="North"><span>N</span></div>
+  <div id="heading-bar" hidden aria-live="off">
+    <canvas id="heading-tape" aria-hidden="true"></canvas>
+    <span id="heading-reading" title="Heading">&mdash;</span>
+  </div>
   <button id="menu-btn" class="fab corner" title="Menu" aria-label="Menu">&#8942;</button>
   <button id="orient-btn" class="fab upper" hidden title="North up (tap for heading up)" aria-label="Toggle map orientation">N</button>
   <button id="recenter-btn" class="fab" hidden title="Center on my location" aria-label="Center on my location">&#9673;</button>

@@ -127,36 +127,31 @@ body {
 }
 .marker.me.stale .dot { background: var(--muted); }
 
-#compass {
+#heading-bar {
   position: absolute;
   top: calc(12px + env(safe-area-inset-top));
   left: 12px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(27,32,39,.85);
-  border: 1px solid var(--border);
+  width: min(420px, calc(100% - 76px));
+  height: 42px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  padding-right: 10px;
+  background: rgba(27,32,39,.88);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   pointer-events: none;
+  overflow: hidden;
 }
-#compass span {
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--danger);
-  transform: translateY(-9px);
+#heading-tape { flex: 1; min-width: 0; height: 100%; display: block; }
+#heading-reading {
+  flex: none;
+  min-width: 46px;
+  text-align: right;
+  font: 600 16px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
-#compass::after {
-  content: "";
-  position: absolute;
-  width: 2px;
-  height: 14px;
-  background: var(--fg);
-  bottom: 6px;
-  left: 19px;
-  border-radius: 1px;
-}
+#heading-bar.unknown #heading-reading { color: var(--muted); }
 
 .fab {
   position: absolute;

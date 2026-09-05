@@ -9,7 +9,8 @@ A static, backend-free page that turns any pasted map image into a live navigati
    estimate derived from the points you already have. Drag an image marker to fine-tune it, tap it to edit.
    Extra points improve the fit; the list shows each point's residual error.
 3. **Navigate** – your GPS position, accuracy circle and heading are drawn on the image. Pan and pinch-zoom
-   freely; the ⦿ button re-centres on you. Editing points or replacing the map is done from the ⋮ menu. The **N / ▲** button switches between *north up* (the image is
+   freely; the ⦿ button re-centres on you. A rolling heading tape at the top shows which way you are
+   facing (cardinal marks plus the exact bearing). Editing points or replacing the map is done from the ⋮ menu. The **N / ▲** button switches between *north up* (the image is
    rotated so geographic north is at the top; unchanged for a north-up image) and *heading up* (the image
    rotates so the direction you are facing is at the top). Heading comes from the device compass when the
    browser provides one (iOS asks for permission on the first tap), otherwise from GPS course while moving.

@@ -18,7 +18,9 @@ const $ = (sel) => document.querySelector(sel);
 const viewport = $('#viewport');
 const img = $('#map-img');
 const overlay = $('#overlay');
-const compass = $('#compass');
+const headingBar = $('#heading-bar');
+const tapeCanvas = $('#heading-tape');
+const headingReading = $('#heading-reading');
 const recenterBtn = $('#recenter-btn');
 const orientBtn = $('#orient-btn');
 const dropZone = $('#drop-zone');
@@ -378,11 +380,6 @@ function render() {
     el.classList.toggle('stale', Date.now() - lastPosition.timestamp > 30000);
   } else if (meEl) meEl.hidden = true;
 
-  // compass
-  if (transform && state.phase !== 'upload') {
-    compass.hidden = false;
-    compass.style.transform = `rotate(${northRotationDeg(transform) + view.rot}deg)`;
-  } else compass.hidden = true;
 }
 
 // Dragging a calibration marker to fine-tune its pixel position.
@@ -429,6 +426,8 @@ function setPhase(phase) {
   viewport.classList.toggle('picking', phase === 'calibrate');
   recenterBtn.hidden = phase !== 'navigate';
   orientBtn.hidden = phase !== 'navigate';
+  headingBar.hidden = phase !== 'navigate';
+  if (phase === 'navigate') updateTape();
   $('#menu-edit').hidden = phase === 'upload';
   if (phase !== 'navigate' && view.rot !== 0) { const r = view.rect(); view.setRotation(0, r.width / 2, r.height / 2); }
   if (phase === 'navigate') startNavigation(); else stopNavigation();
@@ -690,6 +689,76 @@ function headingSource() {
   return null;
 }
 
+// ----- heading tape: a rolling gauge with cardinal marks, plus the exact reading -----
+const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const TAPE_SPAN = 100; // degrees visible across the tape
+let tapeHeading = null; // eased heading currently drawn
+let tapeDrawnKey = '';
+
+function updateTape() {
+  const target = currentHeading();
+  if (target == null) tapeHeading = null;
+  else if (tapeHeading == null) tapeHeading = target;
+  else {
+    const diff = ((((target - tapeHeading) % 360) + 540) % 360) - 180;
+    tapeHeading = Math.abs(diff) < 0.05 ? target : (((tapeHeading + diff * 0.2) % 360) + 360) % 360;
+  }
+  headingReading.textContent = target == null ? '—' : `${Math.round(target) % 360}°`;
+  headingBar.classList.toggle('unknown', target == null);
+  const key = `${tapeHeading == null ? 'x' : tapeHeading.toFixed(2)}|${tapeCanvas.clientWidth}|${devicePixelRatio}`;
+  if (key !== tapeDrawnKey) { tapeDrawnKey = key; drawTape(tapeHeading); }
+}
+
+function drawTape(h) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = tapeCanvas.clientWidth, ht = tapeCanvas.clientHeight;
+  if (!w || !ht) return;
+  if (tapeCanvas.width !== Math.round(w * dpr) || tapeCanvas.height !== Math.round(ht * dpr)) {
+    tapeCanvas.width = Math.round(w * dpr);
+    tapeCanvas.height = Math.round(ht * dpr);
+  }
+  const ctx = tapeCanvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, ht);
+  const known = h != null;
+  const hh = known ? h : 0;
+  const ppd = w / TAPE_SPAN;
+  const ink = known ? '#e8ecf1' : '#596471';
+  ctx.lineWidth = 1;
+  ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const start = Math.floor((hh - TAPE_SPAN / 2) / 5) * 5 - 5;
+  for (let d = start; d <= hh + TAPE_SPAN / 2 + 5; d += 5) {
+    const x = Math.round(w / 2 + (d - hh) * ppd) + 0.5;
+    const deg = ((d % 360) + 360) % 360;
+    const major = deg % 45 === 0, mid = deg % 15 === 0;
+    ctx.strokeStyle = ink;
+    ctx.beginPath();
+    ctx.moveTo(x, ht - 3);
+    ctx.lineTo(x, ht - 3 - (major ? 11 : mid ? 7 : 4));
+    ctx.stroke();
+    if (major) {
+      const label = CARDINALS[deg / 45];
+      ctx.fillStyle = label === 'N' && known ? '#ef4444' : ink;
+      ctx.fillText(label, x, 5);
+    }
+  }
+  // fade the ends so the tape reads as a rolling strip
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, 'rgba(27,32,39,1)'); g.addColorStop(0.18, 'rgba(27,32,39,0)');
+  g.addColorStop(0.82, 'rgba(27,32,39,0)'); g.addColorStop(1, 'rgba(27,32,39,1)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, ht);
+  // centre index
+  ctx.strokeStyle = known ? '#3b82f6' : '#596471';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 2);
+  ctx.lineTo(w / 2, ht - 2);
+  ctx.stroke();
+}
+
 // ----- view rotation controller: eases the map towards the mode's target rotation -----
 function targetRotation() {
   if (!transform) return null;
@@ -719,6 +788,7 @@ let rotTicking = false;
 function rotationTick() {
   if (state.phase !== 'navigate') { rotTicking = false; return; }
   stepRotation(false);
+  updateTape();
   requestAnimationFrame(rotationTick);
 }
 function startRotationTicker() {
