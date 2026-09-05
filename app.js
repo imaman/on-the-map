@@ -28,7 +28,7 @@ const panelNav = $('#panel-navigate');
 const pointList = $('#point-list');
 const calHint = $('#cal-hint');
 const navStatus = $('#nav-status');
-const navDetail = $('#nav-detail');
+const navStatusText = $('#nav-status-text');
 const coordDialog = $('#coord-dialog');
 const coordInput = $('#coord-input');
 const coordPreview = $('#coord-preview');
@@ -352,7 +352,7 @@ function render() {
     }
     el.querySelector('.pin').textContent = i + 1;
     el.classList.toggle('pending', p.lat == null);
-    el.classList.toggle('small', state.phase === 'navigate');
+    el.hidden = state.phase === 'navigate'; // during navigation the only dot on screen is you
     const s = view.imageToScreen(p.px, p.py);
     el.style.transform = `translate(${s.x}px, ${s.y}px)`;
   });
@@ -664,7 +664,7 @@ function onOrientation(e) {
   compassHeading = (((h - screenAngle) % 360) + 360) % 360;
   compassTs = Date.now();
   if (state.phase === 'navigate') {
-    if (!hadHeading || compassTs - lastDetailTs > 1000) updateNavDetail(); // promptly on first fix, then throttled
+    if (!hadHeading || compassTs - lastDetailTs > 1000) updateNavStatus(); // promptly on first fix, then throttled
     scheduleRender(); // heading arrow follows the compass
   }
 }
@@ -737,51 +737,58 @@ function setOrient(mode) {
   orientBtn.title = mode === 'heading' ? 'Heading up (tap for north up)' : 'North up (tap for heading up)';
   orientBtn.classList.toggle('active', mode === 'heading');
   if (mode === 'heading') startCompass();
-  if (state.phase === 'navigate') { stepRotation(true); updateNavDetail(); }
+  if (state.phase === 'navigate') { stepRotation(true); updateNavStatus(); }
 }
 
+let geoError = null;
 function startNavigation() {
   recomputeTransform();
   startCompass();
   startRotationTicker();
   stepRotation(true);
+  geoError = null;
+  updateNavStatus();
   if (!navigator.geolocation) { setNavStatus('Geolocation is not supported by this browser.', true); return; }
   if (watchId != null) return;
-  setNavStatus('Waiting for location…');
-  watchId = navigator.geolocation.watchPosition(onPosition, (err) => setNavStatus(geoErrorText(err), true),
+  watchId = navigator.geolocation.watchPosition(onPosition, (err) => { geoError = err; updateNavStatus(); },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
   requestWakeLock();
 }
 function stopNavigation() {
   if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   lastPosition = null;
+  geoError = null;
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   scheduleRender();
 }
 function onPosition(pos) {
   lastPosition = pos;
-  if (!transform) { setNavStatus('Need at least two calibrated points.', true); return; }
-  const { latitude: lat, longitude: lon, accuracy, speed } = pos.coords;
-  const px = worldToPixel(transform, lat, lon);
-  const onMap = px.x >= 0 && px.y >= 0 && px.x <= img.naturalWidth && px.y <= img.naturalHeight;
-  setNavStatus(onMap ? `On map · accuracy ±${Math.round(accuracy)} m` : `Outside the map image · accuracy ±${Math.round(accuracy)} m`, !onMap);
-  updateNavDetail();
-  if (state.follow) view.centerOnImagePoint(px.x, px.y);
+  geoError = null;
+  updateNavStatus();
+  if (transform && state.follow) {
+    const px = worldToPixel(transform, pos.coords.latitude, pos.coords.longitude);
+    view.centerOnImagePoint(px.x, px.y);
+  }
   scheduleRender();
 }
-function updateNavDetail() {
+/** The single status line: it must read as "you are here", not as a form. */
+function updateNavStatus() {
   lastDetailTs = Date.now();
-  if (!lastPosition) return;
-  const { latitude: lat, longitude: lon, speed } = lastPosition.coords;
-  const parts = [fmtCoord(lat, lon)];
-  if (speed != null && speed > 0.3) parts.push(`${(speed * 3.6).toFixed(1)} km/h`);
+  if (geoError) { setNavStatus(geoErrorText(geoError), true); return; }
+  if (!lastPosition) { setNavStatus('Locating you…'); return; }
+  if (!transform) { setNavStatus('Need at least two calibrated points.', true); return; }
+  const { latitude: lat, longitude: lon, accuracy, speed } = lastPosition.coords;
+  const px = worldToPixel(transform, lat, lon);
+  const onMap = px.x >= 0 && px.y >= 0 && px.x <= img.naturalWidth && px.y <= img.naturalHeight;
+  const parts = [onMap ? 'You are here' : 'You are off this map', `±${Math.round(accuracy)} m`];
   const h = currentHeading();
-  if (h != null) parts.push(`${Math.round(h)}° (${headingSource()})`);
-  else if (state.orient === 'heading') parts.push('no heading yet – move, or enable compass');
-  navDetail.textContent = parts.join(' · ');
+  if (h != null) parts.push(`${Math.round(h)}° ${headingSource()}`);
+  else if (state.orient === 'heading') parts.push('no heading yet');
+  if (speed != null && speed > 0.3) parts.push(`${(speed * 3.6).toFixed(1)} km/h`);
+  setNavStatus(parts.join(' · '), !onMap);
 }
 function setNavStatus(text, isErr = false) {
-  navStatus.textContent = text;
+  navStatusText.textContent = text;
   navStatus.classList.toggle('err', isErr);
 }
 function setFollow(on) {
@@ -800,7 +807,7 @@ async function requestWakeLock() {
   } catch { /* not critical */ }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
-setInterval(() => { if (state.phase === 'navigate' && lastPosition) { updateNavDetail(); scheduleRender(); } }, 5000); // refresh stale styling / heading
+setInterval(() => { if (state.phase === 'navigate' && lastPosition) { updateNavStatus(); scheduleRender(); } }, 5000); // refresh stale styling / heading
 
 // ---------- image input ----------
 let imgObjectUrl = null;
@@ -870,7 +877,12 @@ async function confirmReplace() {
 }
 
 // ---------- menu & buttons ----------
-$('#menu-btn').addEventListener('click', () => menuDialog.showModal());
+$('#menu-btn').addEventListener('click', () => {
+  const pos = $('#menu-pos');
+  pos.hidden = !(state.phase === 'navigate' && lastPosition);
+  if (!pos.hidden) pos.textContent = `Your position: ${fmtCoord(lastPosition.coords.latitude, lastPosition.coords.longitude)}`;
+  menuDialog.showModal();
+});
 menuDialog.addEventListener('close', async () => {
   switch (menuDialog.returnValue) {
     case 'replace': $('#file-input').click(); break;
@@ -891,8 +903,6 @@ menuDialog.addEventListener('close', async () => {
 });
 $('#fit-btn').addEventListener('click', () => view.fit());
 $('#start-nav-btn').addEventListener('click', () => { setFollow(true); setPhase('navigate'); });
-$('#edit-points-btn').addEventListener('click', () => setPhase('calibrate'));
-$('#stop-nav-btn').addEventListener('click', () => setPhase('calibrate'));
 recenterBtn.addEventListener('click', () => setFollow(true));
 orientBtn.addEventListener('click', () => setOrient(state.orient === 'heading' ? 'north' : 'heading'));
 

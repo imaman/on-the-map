@@ -52,12 +52,7 @@
   </section>
 
   <section id="panel-navigate" hidden>
-    <p id="nav-status" class="status">Waiting for location&hellip;</p>
-    <p id="nav-detail" class="muted small"></p>
-    <div class="row">
-      <button id="edit-points-btn" class="btn">Edit points</button>
-      <button id="stop-nav-btn" class="btn">Stop</button>
-    </div>
+    <p id="nav-status" class="status you"><span class="you-dot" aria-hidden="true"></span><span id="nav-status-text">Locating you&hellip;</span></p>
   </section>
 </footer>
 
@@ -86,6 +81,7 @@
     <h2>Menu</h2>
     <button value="replace" class="btn wide">Replace map image</button>
     <button value="edit" id="menu-edit" class="btn wide">Edit calibration points</button>
+    <p id="menu-pos" class="muted small" hidden></p>
     <button value="fit" class="btn wide">Fit map to screen</button>
     <button value="reset" class="btn wide danger">Reset everything</button>
     <p class="muted small">Everything is stored only in this browser. Location needs HTTPS (or localhost) and your permission.</p>

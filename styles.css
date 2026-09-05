@@ -119,7 +119,6 @@ body {
 }
 .marker.cal.pending .pin { background: #f59e0b; }
 #viewport.picking .marker.cal { pointer-events: auto; cursor: move; }
-.marker.cal.small .pin { width: 14px; height: 14px; font-size: 0; opacity: .75; }
 
 .marker.me .acc {
   position: absolute;
@@ -259,7 +258,17 @@ kbd {
 .small { font-size: 13px; }
 .status { margin: 0; font-weight: 600; }
 .status.err { color: #fca5a5; }
-#nav-detail { margin: 2px 0 0; }
+.status.you { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+.you-dot {
+  flex: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.35);
+}
+.status.err .you-dot { background: var(--muted); }
+#menu-pos { font-family: ui-monospace, monospace; margin: 10px 0 0; }
 
 #point-list { list-style: none; margin: 0; padding: 0; max-height: 26vh; overflow: auto; }
 #point-list li {
